@@ -260,9 +260,9 @@ int main(void) {
                                     : ((mfree*5<total)
                                        ? 5
                                        : 8)));
-                char tempcolor = ((temp > 65)
+                char tempcolor = ((temp > 80)
                                   ? 3
-                                  : ((temp > 60)
+                                  : ((temp > 65)
                                      ? 4
                                      : ((temp > 50)
                                         ? 5
