@@ -254,26 +254,26 @@ int main(void) {
                                         ? 5
                                         : 6)));
                 char memcolor = ((mfree*20<total)
-                                 ? '\x03'
+                                 ? 3
                                  : ((mfree*10<total)
-                                    ? '\x04'
+                                    ? 4
                                     : ((mfree*5<total)
-                                       ? '\x05'
-                                       : '\x08')));
+                                       ? 5
+                                       : 8)));
                 char tempcolor = ((temp > 65)
-                                  ? '\x03'
+                                  ? 3
                                   : ((temp > 60)
-                                     ? '\x04'
+                                     ? 4
                                      : ((temp > 50)
-                                        ? '\x05'
-                                        : '\x08')));
+                                        ? 5
+                                        : 8)));
                 char batcolor = ((batpct < 10
-                                  ? '\x03'
+                                  ? 3
                                   : ((batpct < 20)
-                                     ? '\x04'
+                                     ? 4
                                      : ((batpct < 30)
-                                        ? '\x05'
-                                        : '\x07'))));
+                                        ? 5
+                                        : 7))));
                 snprintf(status, 200,
                          "%c%0.02lf %0.02lf %0.02lf\x01::"
                          "%cu %0.01lfM f %0.01lfM b %0.01lfM c %0.01lfM\x01::"
