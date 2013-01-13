@@ -253,11 +253,11 @@ int main(void) {
                                      : ((a>2)
                                         ? 5
                                         : 6)));
-                char memcolor = ((mfree*20<total)
+                char memcolor = (((mfree+cach)*20<total)
                                  ? 3
-                                 : ((mfree*10<total)
+                                 : (((mfree+cach)*10<total)
                                     ? 4
-                                    : ((mfree*5<total)
+                                    : (((mfree+cach)*5<total)
                                        ? 5
                                        : 8)));
                 char tempcolor = ((temp > 80)
