@@ -50,43 +50,36 @@ static void setstatus(Display *dpy, const char *str) {
                 }                                               \
         } while (0)
 
+#define scanfile(filename, nelts, fmt, args...) do {                    \
+                withfile(scanfile_fvar, filename, {                     \
+                                if (fscanf(scanfile_fvar, fmt, ##args) != nelts) { \
+                                        err(1, "fscanf(\"%s\")", filename); \
+                                }                                       \
+                        });                                             \
+        } while (0)
+
 static void getload(double *a, double *b, double *c) {
-        withfile(fd, "/proc/loadavg", {
-                        if (fscanf(fd, "%lf %lf %lf", a, b, c) != 3) {
-                                err(1, "fscanf(\"/proc/loadavg\")");
-                        }
-                });
+        scanfile("/proc/loadavg", 3, "%lf %lf %lf", a, b, c);
 }
 
 static void getmem(int *total, int *free, int *buff, int *cach) {
-        withfile(fd, "/proc/meminfo", {
-                        if (fscanf(fd, ("MemTotal: %d kB "
-                                        "MemFree: %d kB "
-                                        "Buffers: %d kB "
-                                        "Cached: %d kB"),
-                                   total, free, buff, cach) != 4) {
-                                err(1, "fscanf(\"/proc/meminfo\")");
-                        }
-                });
+        scanfile("/proc/meminfo", 4,
+                 ("MemTotal: %d kB "
+                  "MemFree: %d kB "
+                  "Buffers: %d kB "
+                  "Cached: %d kB"),
+                 total, free, buff, cach);
 }
 
 static int getintval(const char *file) {
         int ret;
-        withfile(fd, file, {
-                        if (fscanf(fd, "%d", &ret) != 1) {
-                                err(1, "fscanf(\"%s\")", file);
-                        }
-                });
+        scanfile(file, 1, "%d", &ret);
         return ret;
 }
 
 static double getdoubleval(const char *file) {
         double ret;
-        withfile(fd, file, {
-                        if (fscanf(fd, "%lf", &ret) != 1) {
-                                err(1, "fscanf(\"%s\")", file);
-                        }
-                });
+        scanfile(file, 1, "%lf", &ret);
         return ret;
 }
 
