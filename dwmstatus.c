@@ -71,12 +71,7 @@ static void getmem(int *total, int *free, int *buff, int *cach) {
                  total, free, buff, cach);
 }
 
-static int getintval(const char *file) {
-        int ret;
-        scanfile(file, 1, "%d", &ret);
-        return ret;
-}
-
+#if TEMP
 static double getdoubleval(const char *file) {
         double ret;
         scanfile(file, 1, "%lf", &ret);
@@ -87,6 +82,14 @@ static double gettemp(void) {
         double t1 = getdoubleval("/sys/class/thermal/thermal_zone0/temp");
         double t2 = getdoubleval("/sys/class/thermal/thermal_zone1/temp");
         return (t1 + t2) / 2000.0;
+}
+#endif
+
+#if BAT
+static int getintval(const char *file) {
+        int ret;
+        scanfile(file, 1, "%d", &ret);
+        return ret;
 }
 
 static void getbattery(char *batchr, int *batpct, int *batmin) {
@@ -111,6 +114,7 @@ static void getbattery(char *batchr, int *batpct, int *batmin) {
                 *batmin = 0;
         }
 }
+#endif
 
 static void setup_alsa(snd_mixer_t **handlep) {
         snd_mixer_t *handle;
@@ -231,10 +235,14 @@ int main(void) {
                 getload(&a, &b, &c);
                 int total, mfree, buff, cach;
                 getmem(&total, &mfree, &buff, &cach);
+#if TEMP
                 double temp = gettemp();
+#endif
+#if BAT
                 char batchr;
                 int batpct, batmin;
                 getbattery(&batchr, &batpct, &batmin);
+#endif
                 char vol[5];
                 getvolume(handle, vol);
                 char *datetime = getdatetime();
@@ -253,6 +261,7 @@ int main(void) {
                                     : (((mfree+cach)*3<total)
                                        ? 5
                                        : 8)));
+#if TEMP
                 char tempcolor = ((temp > 80)
                                   ? 3
                                   : ((temp > 65)
@@ -260,6 +269,8 @@ int main(void) {
                                      : ((temp > 50)
                                         ? 5
                                         : 8)));
+#endif
+#if BAT
                 char batcolor = ((batpct < 10
                                   ? 3
                                   : ((batpct < 20)
@@ -267,16 +278,25 @@ int main(void) {
                                      : ((batpct < 30)
                                         ? 5
                                         : 7))));
+#endif
                 snprintf(status, 200,
                          "%c%0.02lf %0.02lf %0.02lf\x01::"
                          "%cu %0.01lfM f %0.01lfM b %0.01lfM c %0.01lfM\x01::"
+#if TEMP
                          "%c%0.01lfC\x01::"
+#endif
+#if BAT
                          "%c%c%d%% %0d:%02d\x01::"
+#endif
                          " vol %s :: %s",
                          loadcolor, a, b, c,
                          memcolor, (total-buff-cach-mfree)/1024.0, mfree/1024.0, buff/1024.0, cach/1024.0,
+#if TEMP
                          tempcolor, temp,
+#endif
+#if BAT
                          batcolor, batchr, batpct, batmin / 60, batmin % 60,
+#endif
                          vol, datetime);
                 free(datetime);
                 setstatus(dpy, status);
