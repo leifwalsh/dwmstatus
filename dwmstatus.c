@@ -62,6 +62,14 @@ static void getload(double *a, double *b, double *c) {
         scanfile("/proc/loadavg", 3, "%lf %lf %lf", a, b, c);
 }
 
+static int getncpu(void) {
+        int r;
+        if ((r = sysconf(_SC_NPROCESSORS_ONLN)) < 0) {
+                err(1, "sysconf(_SC_NPROCESSORS_ONLN)");
+        }
+        return r;
+}
+
 static void getmem(int *total, int *free, int *buff, int *cach) {
         scanfile("/proc/meminfo", 4,
                  ("MemTotal: %d kB "
@@ -247,11 +255,12 @@ int main(void) {
                 getvolume(handle, vol);
                 char *datetime = getdatetime();
                 char status[200];
-                char loadcolor = ((a>4)
+                int ncpu = getncpu();
+                char loadcolor = ((a>2*ncpu)
                                   ? 3
-                                  : ((a>3)
+                                  : ((a>3*ncpu/2)
                                      ? 4
-                                     : ((a>2)
+                                     : ((a>ncpu)
                                         ? 5
                                         : 6)));
                 char memcolor = (((mfree+cach)*10<total)
