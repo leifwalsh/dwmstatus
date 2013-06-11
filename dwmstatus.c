@@ -212,21 +212,15 @@ static void getvolume(snd_mixer_t *handle, char *str) {
         }
 }
 
-static char *getdatetime(void) {
+static void getdatetime(char buf[]) {
         time_t result = time(NULL);
         struct tm *resulttm;
         if (!(resulttm = localtime(&result))) {
                 err(1, "localtime");
         }
-        char *buf;
-        if (!(buf = malloc(65))) {
-                err(1, "malloc");
-        }
         if(!strftime(buf, 64, "%a %b %d %H:%M", resulttm)) {
                 err(1, "strftime");
         }
-
-        return buf;
 }
 
 int main(void) {
@@ -253,7 +247,8 @@ int main(void) {
 #endif
                 char vol[5];
                 getvolume(handle, vol);
-                char *datetime = getdatetime();
+                char datetime[65];
+                getdatetime(datetime);
                 char status[200];
                 int ncpu = getncpu();
                 char loadcolor = ((a>2*ncpu)
@@ -307,7 +302,6 @@ int main(void) {
                          batcolor, batchr, batpct, batmin / 60, batmin % 60,
 #endif
                          vol, datetime);
-                free(datetime);
                 setstatus(dpy, status);
         }
 
