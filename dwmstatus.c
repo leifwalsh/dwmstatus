@@ -101,26 +101,38 @@ static int getintval(const char *file) {
 }
 
 static void getbattery(char *batchr, int *batpct, int *batmin) {
-        *batpct = getintval("/sys/devices/platform/smapi/BAT0/remaining_percent");
-        char state[32];
-        withfile(fd, "/sys/devices/platform/smapi/BAT0/state", {
-                        if (!fgets(state, 32, fd)) {
-                                err(1, "fgets(\"/sys/devices/platform/smapi/BAT0/state\")");
-                        }
-                });
-        if (!strncmp("charging", state, 8)) {
+        int enow = 0, efull = 0, power = 0;
+        for (int batnum = 0; batnum < 2; ++batnum) {
+                char filename[256];
+                snprintf(filename, sizeof filename, "/sys/class/power_supply/BAT%d/energy_now", batnum);
+                enow += getintval(filename);
+                snprintf(filename, sizeof filename, "/sys/class/power_supply/BAT%d/energy_full", batnum);
+                efull += getintval(filename);
+                char state[32];
+                snprintf(filename, sizeof filename, "/sys/class/power_supply/BAT%d/status", batnum);
+                withfile(fd, filename, {
+                                if (!fgets(state, 32, fd)) {
+                                        err(1, "fgets(\"/sys/class/power_supply/BATx/status\")");
+                                }
+                        });
+                snprintf(filename, sizeof filename, "/sys/class/power_supply/BAT%d/power_now", batnum);
+                if (!strncmp("Charging", state, 8)) {
+                        power += getintval(filename);
+                } else if (!strncmp("Discharging", state, 11)) {
+                        power -= getintval(filename);
+                }
+        }
+        if (power > 0) {
                 *batchr = '+';
-                *batmin = getintval("/sys/devices/platform/smapi/BAT0/remaining_charging_time");
-        } else if (!strncmp("discharging", state, 11)) {
+                *batmin = (int) (60.0 * (efull - enow) / power);
+        } else if (power < 0) {
                 *batchr = '-';
-                *batmin = getintval("/sys/devices/platform/smapi/BAT0/remaining_running_time_now");
-        } else if (!strncmp("idle", state, 4)) {
+                *batmin = (int) (60.0 * enow / (-power));
+        } else {
                 *batchr = '=';
                 *batmin = 0;
-        } else {
-                *batchr = '!';
-                *batmin = 0;
         }
+        *batpct = (int) (100.0 * enow / efull);
 }
 #endif
 
