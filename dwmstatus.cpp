@@ -298,13 +298,26 @@ public:
     int ac_present;
     acf >> ac_present;
 
-    _percent = 100.0 * energy_now / energy_full;
+    double dpercent = 100.0 * energy_now / energy_full;
+    if (100.0 - dpercent < 0.5) {
+      _percent = 100;
+    } else {
+      _percent = int(dpercent);
+    }
     if (ac_present == 1) {
-      _direction = '+';
-      _minutes = int(60.0 * (energy_full - energy_now) / power);
+      if (_percent == 100) {
+        _direction = '=';
+        _minutes = 0;
+      } else {
+        _direction = '+';
+        _minutes = int(60.0 * (energy_full - energy_now) / power);
+      }
     } else {
       _direction = '-';
       _minutes = int(60.0 * energy_now / power);
+    }
+    if (_minutes < 0) {
+      _minutes = 0;
     }
   }
 
@@ -322,9 +335,12 @@ public:
 
   operator std::string() const {
     std::stringstream ss;
-    ss << _direction << _percent << "% ";
-    ss << std::setw(1) << std::setfill('0') << _minutes / 60 << ":";
-    ss << std::setw(2) << std::setfill('0') << _minutes % 60;
+    ss << _direction << _percent << "%";
+    if (_percent != 100 || _direction == '-') {
+      ss << " "
+         << std::setw(1) << std::setfill('0') << _minutes / 60 << ":"
+         << std::setw(2) << std::setfill('0') << _minutes % 60;
+    }
     return ss.str();
   }
 };
