@@ -33,6 +33,7 @@
 #include <vector>
 
 #include <err.h>
+#include <dirent.h>
 #include <stdio.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -40,6 +41,8 @@
 #include <time.h>
 #include <X11/Xlib.h>
 #include <alsa/asoundlib.h>
+
+#include "hostap/src/common/wpa_ctrl.h"
 
 static int getncpu(void) {
   int r;
@@ -188,7 +191,7 @@ public:
   }
 };
 
-static bool exists(const std::string &filename) {
+static bool dir_exists(const std::string &filename) {
   struct stat st;
   int r = stat(filename.c_str(), &st);
   if (r == 0) {
@@ -213,7 +216,7 @@ class Battery : public Metric {
         power_now(0),
         status(""),
         present(false) {
-      if (exists(batdir)) {
+      if (dir_exists(batdir)) {
         {
           std::stringstream ss;
           ss << batdir << "/present";
@@ -472,6 +475,147 @@ public:
   }
 };
 
+class Dir {
+  DIR *_dir;
+
+  const char *_next() const {
+    struct dirent *ent = readdir(_dir);
+    if (ent == NULL) {
+      return NULL;
+    }
+    return ent->d_name;
+  }
+
+public:
+  Dir(const char *name) : _dir(opendir(name)) {
+    if (_dir == NULL) {
+      err(1, "opendir");
+    }
+  }
+  ~Dir() {
+    if (_dir) {
+      closedir(_dir);
+    }
+  }
+
+  const char *next() const {
+    const char *ret = _next();
+    while (std::string(".") == ret || std::string("..") == ret) {
+      ret = _next();
+    }
+    return ret;
+  }
+};
+
+class Wifi : public Metric {
+  enum State {
+    DISCONNECTED = 0,
+    SEARCHING,
+    CONNECTING,
+    CONNECTED,
+    WIFI_OFF
+  };
+
+  class WpaCtrl {
+    struct wpa_ctrl *_c;
+  public:
+    WpaCtrl(const char *sock) : _c(wpa_ctrl_open(sock)) {}
+    ~WpaCtrl() {
+      if (_c != NULL) {
+        wpa_ctrl_close(_c);
+      }
+    }
+
+    bool ok() const {
+      return _c != NULL;
+    }
+
+    void status(std::string &ssid, enum State &state) {
+      char buf[1<<12];
+      size_t bufsz = sizeof buf;
+      int ret = wpa_ctrl_request(_c, "STATUS", (sizeof "STATUS") - 1, buf, &bufsz, NULL);
+      if (ret != 0) {
+        err(1, "wpa_ctrl_request");
+      }
+
+      std::string statusstr(buf, bufsz);
+      std::istringstream iss(statusstr);
+      while (iss.good()) {
+        std::string key;
+        std::getline(iss, key, '=');
+        if (key == "ssid") {
+          std::getline(iss, ssid);
+        } else if (key == "wpa_state") {
+          std::string statestr;
+          std::getline(iss, statestr);
+          if (statestr == "COMPLETED") {
+            state = CONNECTED;
+          } else if (statestr == "DISCONNECTED" || statestr == "INACTIVE") {
+            state = DISCONNECTED;
+          } else if (statestr == "SCANNING") {
+            state = SEARCHING;
+          } else if (statestr == "INTERFACE_DISABLED") {
+            state = WIFI_OFF;
+          } else {
+            state = CONNECTING;
+          }
+        }
+        std::string discard;
+        std::getline(iss, discard);
+      }
+    }
+  };
+
+  std::string _ssid;
+  enum State _state;
+  bool _present;
+
+public:
+  Wifi() : _ssid(""), _state(WIFI_OFF), _present(false) {
+    if (dir_exists("/run/wpa_supplicant")) {
+      Dir dir("/run/wpa_supplicant");
+      while (const char *name = dir.next()) {
+        std::stringstream ss;
+        ss << "/run/wpa_supplicant/" << name;
+        WpaCtrl c(ss.str().c_str());
+        if (c.ok()) {
+          _present = true;
+          c.status(_ssid, _state);
+          break;
+        }
+      }
+    }
+  }
+
+  enum Color color() const {
+    switch (_state) {
+    case WIFI_OFF:
+      return RED;
+    case DISCONNECTED:
+      return ORANGE;
+    case SEARCHING:
+      return YELLOW;
+    case CONNECTING:
+      return GREEN;
+    case CONNECTED:
+      return BLUE;
+    }
+    return NORMAL;
+  }
+
+  operator std::string() const {
+    if (_state == WIFI_OFF) {
+      return "wifi off";
+    } else if (_ssid.empty()) {
+      return "???";
+    } else {
+      return _ssid;
+    }
+  }
+
+  bool present() const { return _present; }
+};
+
 int main(void) {
   Display *dpy;
   if (!(dpy = XOpenDisplay(NULL))) {
@@ -483,9 +627,13 @@ int main(void) {
   for (;;sleep(5)) {
     std::stringstream ss;
     Battery b;
+    Wifi w;
     ss << Load() << Separator()
        << Meminfo() << Separator()
        << Temp() << Separator();
+    if (w.present()) {
+      ss << w << Separator();
+    }
     if (b.present()) {
       ss << b << Separator();
     }
