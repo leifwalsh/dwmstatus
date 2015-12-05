@@ -23,10 +23,12 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#include <algorithm>
 #include <fstream>
 #include <iomanip>
 #include <ios>
 #include <iostream>
+#include <memory>
 #include <numeric>
 #include <sstream>
 #include <string>
@@ -64,15 +66,21 @@ enum Color {
 };
 
 class Metric {
+protected:
   template<class stream>
   class ColorScope {
     stream &_s;
+    Color _c;
   public:
-    ColorScope(stream &s, enum Color c) : _s(s) {
-      _s << (char) c;
+    ColorScope(stream &s, enum Color c) : _s(s), _c(c) {
+      if (_c != NORMAL) {
+        _s << (char) _c;
+      }
     }
     ~ColorScope() {
-      _s << '\x01';
+      if (_c != NORMAL) {
+        _s << '\x01';
+      }
     }
   };
 
@@ -95,6 +103,37 @@ class Separator : public Metric {
 public:
   enum Color color() const { return NORMAL; }
   operator std::string() const { return "::"; }
+};
+
+class Bar : public Metric {
+  const int _x, _y, _w, _h, _skip;
+  const bool _filled;
+  const Color _c;
+public:
+  Bar(int x, int y, int w, int h, int skip, bool filled, Color c)
+    : _x(x),
+      _y(y),
+      _w(w),
+      _h(h),
+      _skip(skip),
+      _filled(filled),
+      _c(c)
+  {}
+  Color color() const { return NORMAL; }
+  operator std::string() const {
+    char buf[6];
+    buf[0] = (char) _c;
+    buf[0] |= 1<<7;
+    if (_filled) {
+      buf[0] |= 1<<6;
+    }
+    buf[1] = (char) _x + 1;
+    buf[2] = (char) _y + 1;
+    buf[3] = (char) _w + 1;
+    buf[4] = (char) _h + 1;
+    buf[5] = (char) _skip + 1;
+    return std::string(buf, sizeof buf);
+  }
 };
 
 class Load : public Metric {
@@ -121,6 +160,115 @@ public:
     return ss.str();
   }
 };
+
+class Cpuinfo : public Metric {
+  static int nelts;
+  static std::unique_ptr<size_t[]> total_last, user_last, sys_last, io_last;
+
+  std::unique_ptr<size_t[]> total_cur, user_cur, sys_cur, io_cur;
+
+public:
+  Cpuinfo() {
+    if (!nelts) {
+      nelts = getncpu() + 1;
+      total_last = std::make_unique<size_t[]>(nelts);
+      user_last = std::make_unique<size_t[]>(nelts);
+      sys_last = std::make_unique<size_t[]>(nelts);
+      io_last = std::make_unique<size_t[]>(nelts);
+      std::fill(&total_last[0], &total_last[nelts], 0);
+      std::fill(&user_last[0], &user_last[nelts], 0);
+      std::fill(&sys_last[0], &sys_last[nelts], 0);
+      std::fill(&io_last[0], &io_last[nelts], 0);
+    }
+
+    total_cur = std::make_unique<size_t[]>(nelts);
+    user_cur = std::make_unique<size_t[]>(nelts);
+    sys_cur = std::make_unique<size_t[]>(nelts);
+    io_cur = std::make_unique<size_t[]>(nelts);
+    std::fill(&total_cur[0], &total_cur[nelts], 0);
+    std::fill(&user_cur[0], &user_cur[nelts], 0);
+    std::fill(&sys_cur[0], &sys_cur[nelts], 0);
+    std::fill(&io_cur[0], &io_cur[nelts], 0);
+    
+    std::ifstream f("/proc/stat");
+    for (int i = 0; i < nelts; ++i) {
+      f.ignore(std::numeric_limits<std::streamsize>::max(), ' ');
+      for (int j = 0; f.good(); ++j) {
+        size_t jiffies;
+        f >> jiffies;
+        if (f.fail()) {
+          f.clear();
+          break;
+        }
+        if (j < 2) {
+          user_cur[i] += jiffies;
+        } else if (j == 2) {
+          sys_cur[i] += jiffies;
+        } else if (j == 4) {
+          io_cur[i] += jiffies;
+        }
+        total_cur[i] += jiffies;
+      }
+    }
+  }
+  ~Cpuinfo() {
+    std::copy(&total_cur[0], &total_cur[nelts], &total_last[0]);
+    std::copy(&user_cur[0], &user_cur[nelts], &user_last[0]);
+    std::copy(&sys_cur[0], &sys_cur[nelts], &sys_last[0]);
+    std::copy(&io_cur[0], &io_cur[nelts], &io_last[0]);
+  }
+  int pct(int i) const {
+    return int(100 * double(user_cur[i] - user_last[i] + sys_cur[i] - sys_last[i]) / double(total_cur[i] - total_last[i]));
+  }
+  int user(int i) const {
+    return int(100 * double(user_cur[i] - user_last[i]) / double(total_cur[i] - total_last[i]));
+  }
+  int sys(int i) const {
+    return int(100 * double(sys_cur[i] - sys_last[i]) / double(total_cur[i] - total_last[i]));
+  }
+  int io(int i) const {
+    return int(100 * double(io_cur[i] - io_last[i]) / double(total_cur[i] - total_last[i]));
+  }
+  enum Color color() const {
+    return NORMAL;
+  }
+  enum Color color_for(int i) const {
+    const int p = pct(i);
+    return ((p > 90)
+            ? RED
+            : ((p > 75)
+               ? ORANGE
+               : ((p > 50)
+                  ? YELLOW
+                  : ((p > 10)
+                     ? GREEN
+                     : BLUE))));
+  }
+  operator std::string() const {
+    std::stringstream ss;
+    {
+      ColorScope<std::stringstream> cs(ss, color_for(0));
+      ss << user(0) << "% "
+         << sys(0) << "% "
+         << io(0) << "%";
+    }
+    for (int i = 1; i < nelts; ++i) {
+      ss << Bar(0,
+                2 + (i - 1) * 3,
+                40 * pct(i) / 100,
+                2,
+                (i == (nelts - 1)) ? 41 : 0,
+                true,
+                color_for(i));
+    }
+    return ss.str();
+  }
+};
+int Cpuinfo::nelts = 0;
+std::unique_ptr<size_t[]> Cpuinfo::total_last = nullptr;
+std::unique_ptr<size_t[]> Cpuinfo::user_last = nullptr;
+std::unique_ptr<size_t[]> Cpuinfo::sys_last = nullptr;
+std::unique_ptr<size_t[]> Cpuinfo::io_last = nullptr;
 
 class Meminfo : public Metric {
   size_t total, mfree, buff, cach;
@@ -151,12 +299,17 @@ public:
                   : GREEN)));
   }
   operator std::string() const {
+    const size_t used = (total - buff - cach - mfree);
     std::stringstream ss;
     ss << std::setw(1) << std::setfill('0') << std::setprecision(1) << std::fixed;
-    ss << "u " << (total - buff - cach - mfree) / 1024.0 << "M "
-       << "f " << mfree / 1024.0 << "M "
+    ss << "u " << used / 1024.0 << "M "
        << "b " << buff / 1024.0 << "M "
-       << "c " << cach / 1024.0 << "M";
+       << "c " << cach / 1024.0 << "M ";
+    int x = 0;
+    ss << Bar(x, 1, 100 * used / total, 12, 0, true, GREEN); x += 100 * used / total;
+    ss << Bar(x, 1, 100 * buff / total, 12, 0, true, BLUE);  x += 100 * buff / total;
+    ss << Bar(x, 1, 100 * cach / total, 12, 0, true, ORANGE);
+    ss << Bar(0, 1, 100, 12, 101, false, NORMAL);
     return ss.str();
   }
 };
@@ -628,8 +781,8 @@ int main(void) {
     std::stringstream ss;
     Battery b;
     Wifi w;
-    ss << Load() << Separator()
-       << Meminfo() << Separator()
+    ss << Cpuinfo()
+       << Meminfo()
        << Temp() << Separator();
     if (w.present()) {
       ss << w << Separator();
