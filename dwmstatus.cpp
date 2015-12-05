@@ -42,7 +42,6 @@
 #include <unistd.h>
 #include <time.h>
 #include <X11/Xlib.h>
-#include <alsa/asoundlib.h>
 
 #include "hostap/src/common/wpa_ctrl.h"
 
@@ -518,116 +517,6 @@ public:
   }
 };
 
-class AlsaManager {
-  class MixerHandle {
-    snd_mixer_t *_h;
-  public:
-    MixerHandle() : _h(nullptr) {
-      if (snd_mixer_open(&_h, 0) != 0) {
-        err(1, "snd_mixer_open");
-      }
-    }
-    ~MixerHandle() {
-      snd_mixer_close(_h);
-    }
-    snd_mixer_t *get() const { return _h; }
-  };
-
-  class MixerSelemId {
-    snd_mixer_selem_id_t *_s;
-  public:
-    MixerSelemId(const char *mix_name, int mix_index) : _s(nullptr) {
-      snd_mixer_selem_id_malloc(&_s);
-      snd_mixer_selem_id_set_index(_s, mix_index);
-      snd_mixer_selem_id_set_name(_s, mix_name);
-    }
-    ~MixerSelemId() {
-      snd_mixer_selem_id_free(_s);
-    }
-    snd_mixer_selem_id_t *get() const { return _s; }
-  };
-
-  class MixerLoader {
-    snd_mixer_t *_handle;
-  public:
-    MixerLoader(snd_mixer_t *handle) : _handle(handle) {
-      if (snd_mixer_load(handle) != 0) {
-        err(1, "snd_mixer_load");
-      }
-    }
-    ~MixerLoader() {
-      snd_mixer_free(_handle);
-    }
-  };
-
-  MixerHandle _handle;
-
-public:
-  AlsaManager() : _handle() {
-    static const char *card = "default";
-    if (snd_mixer_attach(_handle.get(), card) != 0) {
-      err(1, "snd_mixer_attach");
-    }
-    if (snd_mixer_selem_register(_handle.get(), NULL, NULL) != 0) {
-      err(1, "snd_mixer_selem_register");
-    }
-  }
-
-  class AlsaMetric : public Metric {
-    long _volume;
-    bool _muted;
-  public:
-    AlsaMetric(long volume, bool muted) : _volume(volume), _muted(muted) {}
-
-    enum Color color() const { return NORMAL; }
-    operator std::string() const {
-      std::stringstream ss;
-      ss << "vol ";
-      if (_muted) {
-        ss << "mute";
-      } else {
-        ss << _volume;
-      }
-      return ss.str();
-    }
-  };
-
-  AlsaMetric get_volume() const {
-    MixerLoader loader(_handle.get());
-
-    static const char *mix_name = "Master";
-    static int mix_index = 0;
-    MixerSelemId sid(mix_name, mix_index);
-
-    snd_mixer_elem_t *elem;
-    if (!(elem = snd_mixer_find_selem(_handle.get(), sid.get()))) {
-      err(1, "snd_mixer_find_selem");
-    }
-
-    long minv, maxv;
-    if (snd_mixer_selem_get_playback_volume_range(elem, &minv, &maxv) != 0) {
-      err(1, "snd_mixer_selem_get_playback_volume_range");
-    }
-    long lvol, rvol;
-    if (snd_mixer_selem_get_playback_volume(elem, SND_MIXER_SCHN_FRONT_LEFT, &lvol) != 0) {
-      err(1, "snd_mixer_selem_get_playback_volume");
-    }
-    if (snd_mixer_selem_get_playback_volume(elem, SND_MIXER_SCHN_FRONT_RIGHT, &rvol) != 0) {
-      err(1, "snd_mixer_selem_get_playback_volume");
-    }
-    long vol = (lvol + rvol) / 2;
-    int lunmuted, runmuted;
-    if (snd_mixer_selem_get_playback_switch(elem, SND_MIXER_SCHN_FRONT_LEFT, &lunmuted) != 0) {
-      err(1, "snd_mixer_selem_get_playback_switch");
-    }
-    if (snd_mixer_selem_get_playback_switch(elem, SND_MIXER_SCHN_FRONT_RIGHT, &runmuted) != 0) {
-      err(1, "snd_mixer_selem_get_playback_switch");
-    }
-
-    return AlsaMetric(100.0 * (vol - minv) / (maxv - minv), lunmuted == 0 && runmuted == 0);
-  }
-};
-
 class Dir {
   DIR *_dir;
 
@@ -775,8 +664,6 @@ int main(void) {
     err(1, "Cannot open display.");
   }
 
-  AlsaManager alsa_manager;
-
   for (;;sleep(5)) {
     std::stringstream ss;
     Battery b;
@@ -790,8 +677,7 @@ int main(void) {
     if (b.present()) {
       ss << b << Separator();
     }
-    ss << ' ' << alsa_manager.get_volume() << ' ' << Separator() << ' '
-       << Datetime();
+    ss << ' ' << Datetime();
     std::string s = ss.str();
     XStoreName(dpy, DefaultRootWindow(dpy), s.c_str());
     XSync(dpy, False);
