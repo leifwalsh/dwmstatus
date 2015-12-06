@@ -24,6 +24,7 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <algorithm>
+#include <chrono>
 #include <fstream>
 #include <iomanip>
 #include <ios>
@@ -658,18 +659,123 @@ public:
   bool present() const { return _present; }
 };
 
+class Net : public Metric {
+  const size_t N;
+  const std::string iftok;
+  mutable size_t rx[60], tx[60];
+  mutable std::chrono::time_point<std::chrono::system_clock> t[60];
+  mutable size_t i;
+
+  void next() const {
+    t[i % N] = std::chrono::system_clock::now();
+    std::ifstream f("/proc/net/dev");
+    std::string s;
+    while (f.good() && s != iftok) {
+      f >> s;
+    }
+    f >> rx[i % N];
+    for (int j = 0; j < 7; ++j) {
+      int ignore;
+      f >> ignore;
+    }
+    f >> tx[i % N];
+    i++;
+  }
+
+public:
+  Net(const std::string &ifname) : N(60), iftok(ifname + ":"), i(0) {
+    std::fill(&rx[0], &rx[N], 0);
+    std::fill(&tx[0], &tx[N], 0);
+  }
+  Color color() const { return NORMAL; }
+  operator std::string() const {
+    next();
+    if (i < 3) {
+      return "";
+    }
+
+    std::stringstream ss;
+    {
+      size_t cur = (i - 1) % N;
+      size_t prev = (i - 2) % N;
+      auto secs = std::chrono::duration_cast<std::chrono::seconds>(t[cur] - t[prev]);
+      const double rx_rate = ((rx[cur] - rx[prev]) / 1024.0) / secs.count();
+      const double tx_rate = ((tx[cur] - tx[prev]) / 1024.0) / secs.count();
+      {
+        Metric::ColorScope<std::stringstream> cs(ss, (rx_rate > 4500
+                                                      ? RED
+                                                      : (rx_rate > 2000
+                                                         ? ORANGE
+                                                         : (rx_rate > 1000
+                                                            ? YELLOW
+                                                            : (rx_rate > 100
+                                                               ? GREEN
+                                                               : BLUE)))));
+        ss << std::setw(1) << std::setfill('0') << std::setprecision(1) << std::fixed;
+        if (rx_rate > (1<<10)) {
+          ss << (rx_rate / (1<<10)) << "M";
+        } else {
+          ss << rx_rate << "k";
+        }
+      }
+      {
+        Metric::ColorScope<std::stringstream> cs(ss, (tx_rate > 1000
+                                                      ? RED
+                                                      : (tx_rate > 500
+                                                         ? ORANGE
+                                                         : (tx_rate > 100
+                                                            ? YELLOW
+                                                            : (tx_rate > 50
+                                                               ? GREEN
+                                                               : BLUE)))));
+        ss << std::setw(1) << std::setfill('0') << std::setprecision(1) << std::fixed;
+        if (tx_rate > (1<<10)) {
+          ss << (tx_rate / (1<<10)) << "M";
+        } else {
+          ss << tx_rate << "k";
+        }
+      }
+    }
+    for (size_t j = (i >= N) ? (i - N + 3) : 3; j < i; ++j) {
+      static const size_t max_rx = (50<<20) / 8; // 50 megabits
+      static const size_t max_tx = (5<<20) / 8;  // 5 megabits
+      const int cur = j % N;
+      const int prev = (j - 1) % N;
+      auto secs = std::chrono::duration_cast<std::chrono::seconds>(t[cur] - t[prev]);
+      if (!secs.count()) {
+        continue;
+      }
+      const double rx_rate = (rx[cur] - rx[prev]) / double(secs.count());
+      const double tx_rate = (tx[cur] - tx[prev]) / double(secs.count());
+      const int rh = std::min(8, int(rx_rate < (100<<10)
+                                     ? (3 * rx_rate / (100<<10))
+                                     : (rx_rate < (1<<20)
+                                        ? (3 + (3 * rx_rate / (1<<20)))
+                                        : (6 + (2 * rx_rate / max_rx)))));
+      const int th = std::min(4, int(tx_rate < (10<<10)
+                                     ? (2 * tx_rate / (10<<10))
+                                     : (2 + (2 * tx_rate / max_tx))));
+      ss << Bar(0, 8 - rh, 1, rh, 0, true, GREEN)
+         << Bar(0, 9, 1, th, 1, true, RED);
+    }
+    return ss.str();
+  }
+};
+
 int main(void) {
   Display *dpy;
   if (!(dpy = XOpenDisplay(NULL))) {
     err(1, "Cannot open display.");
   }
 
+  Net n("wlp3s0");
   for (;;sleep(5)) {
     std::stringstream ss;
     Battery b;
     Wifi w;
     ss << Cpuinfo()
        << Meminfo()
+       << n << Separator()
        << Temp() << Separator();
     if (w.present()) {
       ss << w << Separator();
