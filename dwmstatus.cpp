@@ -887,15 +887,15 @@ int main(void) {
     Wifi w;
     ss << Cpuinfo()
        << Meminfo()
-       << n << Separator()
-       << Temp() << Separator();
+       << n
+       << Temp();
     if (w.present()) {
-      ss << w << Separator();
+      ss << w;
     }
     if (b.present()) {
-      ss << b << Separator();
+      ss << b;
     }
-    ss << ' ' << alsa_manager.get_volume() << ' ' << Separator() << ' '
+    ss << ' ' << alsa_manager.get_volume()
        << Datetime();
     std::string s = ss.str();
     XStoreName(dpy, DefaultRootWindow(dpy), s.c_str());
