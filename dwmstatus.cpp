@@ -302,9 +302,9 @@ public:
     const size_t used = (total - buff - cach - mfree);
     std::stringstream ss;
     ss << std::setw(1) << std::setfill('0') << std::setprecision(1) << std::fixed;
-    ss << "u " << used / 1024.0 << "M "
-       << "b " << buff / 1024.0 << "M "
-       << "c " << cach / 1024.0 << "M ";
+    ss << "u " << (used > (1<<20) ? (used / 1024.0 / 1024.0) : (used / 1024.0)) << (used > (1<<20) ? "G " : "M ")
+       << "b " << (buff > (1<<20) ? (buff / 1024.0 / 1024.0) : (buff / 1024.0)) << (buff > (1<<20) ? "G " : "M ")
+       << "c " << (cach > (1<<20) ? (cach / 1024.0 / 1024.0) : (cach / 1024.0)) << (cach > (1<<20) ? "G " : "M ");
     int x = 0;
     ss << Bar(x, 1, 100 * used / total, 12, 0, true, GREEN); x += 100 * used / total;
     ss << Bar(x, 1, 100 * buff / total, 12, 0, true, BLUE);  x += 100 * buff / total;
