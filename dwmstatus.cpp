@@ -492,10 +492,11 @@ public:
 
   operator std::string() const {
     std::stringstream ss;
-    ss << _direction << _percent << "%";
+    ss << _direction << _percent << "% ";
+    const int h = std::max(1, std::min(12, int(12 * _percent / 100.0)));
+    ss << Bar(0, 13 - h, 3, h, 3, true, color());
     if (_percent != 100 || _direction == '-') {
-      ss << " "
-         << std::setw(1) << std::setfill('0') << _minutes / 60 << ":"
+      ss << std::setw(1) << std::setfill('0') << _minutes / 60 << ":"
          << std::setw(2) << std::setfill('0') << _minutes % 60;
     }
     return ss.str();
