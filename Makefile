@@ -1,6 +1,6 @@
 CPPFLAGS += -Ihostap/src/common -Ihostap/src/utils
+LDLIBS += -lX11 -lasound
 CXXFLAGS += -std=c++14 -g -O2 -Wall -Wextra
-LDLIBS += -lX11
 
 prefix=$(HOME)
 
