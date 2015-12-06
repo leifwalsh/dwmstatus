@@ -584,12 +584,10 @@ public:
     enum Color color() const { return NORMAL; }
     operator std::string() const {
       std::stringstream ss;
-      ss << "vol ";
-      if (_muted) {
-        ss << "mute";
-      } else {
-        ss << _volume;
-      }
+      ss << "v ";
+      const long v = _muted ? 0 : _volume;
+      const int h = std::max(0, std::min(12, int(12 * v / 100.0)));
+      ss << Bar(0, 13 - h, 5, h, 5, true, CYAN);
       return ss.str();
     }
   };
