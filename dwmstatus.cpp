@@ -734,7 +734,9 @@ public:
         if (c.ok()) {
           _present = true;
           c.status(_ssid, _state);
-          break;
+          if (_state == CONNECTED) {
+            break;
+          }
         }
       }
     }
