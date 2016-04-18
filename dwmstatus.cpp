@@ -256,11 +256,25 @@ public:
     for (int i = 1; i < nelts; ++i) {
       ss << Bar(0,
                 2 + (i - 1) * 3,
-                40 * pct(i) / 100,
+                40 * user(i) / 100,
+                2,
+                0,
+                true,
+                BLUE);
+      ss << Bar(40 * user(i) / 100,
+                2 + (i - 1) * 3,
+                40 * sys(i) / 100,
+                2,
+                0,
+                true,
+                YELLOW);
+      ss << Bar(40 * user(i) / 100 + 40 * sys(i) / 100,
+                2 + (i - 1) * 3,
+                40 * io(i) / 100,
                 2,
                 (i == (nelts - 1)) ? 41 : 0,
                 true,
-                color_for(i));
+                RED);
     }
     return ss.str();
   }
