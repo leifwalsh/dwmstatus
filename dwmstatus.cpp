@@ -667,6 +667,9 @@ public:
 
   const char *next() const {
     const char *ret = _next();
+    if (ret == NULL) {
+      return NULL;
+    }
     while (std::string(".") == ret || std::string("..") == ret) {
       ret = _next();
     }
